@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.DS_Store
+node_modules/
+test-results/
+*.png.tmp
+# VEXcode build output
+build/
+*.bin
+*.elf

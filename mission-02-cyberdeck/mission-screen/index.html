@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mission Control</title>
+<!--
+  Mission Builds HQ | Mission 02: the cyberdeck's mission screen.
+  One file, no internet needed. Copy it onto the Raspberry Pi and open it in
+  Chromium (press F for full screen).
+
+  Keys: Space = start / hold the countdown, R = reset, F = full screen.
+  Rover data: run preflight/systems_check.py (or mars_mission.py), copy the
+  console lines from VEXcode, paste them in "Rover data" and press Read.
+  Live data from the rover arrives in a later Mission 02 episode.
+-->
+<style>
+  :root {
+    --bg: #12181F; --panel: #1F2A36; --line: #33414F;
+    --bone: #EDE6D6; --muted: #A9B3BD; --rust: #E0612B; --rust-deep: #C1440E;
+    --go: #3FB56B; --nogo: #E25555; --hold: #E3A83B;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--bone); font-family: var(--sans); }
+  body { min-height: 100vh; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 20px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .badge { width: 46px; height: 38px; border: 3px solid var(--bone); border-radius: 6px 6px 22px 22px;
+           display: grid; place-items: center; font-weight: 800; font-size: 18px; letter-spacing: .02em;
+           background: linear-gradient(to bottom, var(--panel) 68%, var(--rust-deep) 68%); }
+  .brand h1 { margin: 0; font-size: 26px; letter-spacing: .08em; font-weight: 800; }
+  .brand small { display: block; color: var(--muted); font-size: 14px; letter-spacing: .18em; }
+  #missionName { background: transparent; border: 1px dashed var(--line); color: var(--bone); font: inherit;
+                 font-size: 20px; letter-spacing: .1em; padding: 6px 10px; border-radius: 8px; width: 300px; max-width: 100%; min-width: 0; }
+  #localTime { font-family: var(--mono); color: var(--muted); font-size: 16px; }
+  main { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; flex: 1; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px;
+            display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  section h2 { margin: 0; font-size: 16px; letter-spacing: .2em; color: var(--muted); font-weight: 700; }
+  .clock-panel { grid-column: 1 / -1; align-items: center; text-align: center; }
+  #clock { font-family: var(--mono); font-size: clamp(56px, 13vw, 150px); font-weight: 700; line-height: 1;
+           letter-spacing: .02em; }
+  #clockState { font-size: 22px; letter-spacing: .3em; color: var(--muted); }
+  .launched #clock { color: var(--rust); }
+  .holding #clock { color: var(--hold); }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+  button, select { font: inherit; font-size: 18px; letter-spacing: .08em; border-radius: 10px; min-height: 44px;
+                   padding: 8px 16px; border: 1px solid var(--line); background: #2A3846; color: var(--bone); cursor: pointer; }
+  button.primary { background: var(--rust-deep); border-color: var(--rust); }
+  button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible {
+    outline: 3px solid var(--hold); outline-offset: 2px; }
+  #goBanner { border-radius: 10px; padding: 10px; font-size: 30px; font-weight: 800; letter-spacing: .25em; text-align: center; }
+  #goBanner.go { background: rgba(63,181,107,.18); color: var(--go); border: 2px solid var(--go); }
+  #goBanner.nogo { background: rgba(226,85,85,.14); color: var(--nogo); border: 2px solid var(--nogo); }
+  ul.checklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  ul.checklist label { display: flex; align-items: center; gap: 12px; font-size: 21px; padding: 6px 4px; cursor: pointer; }
+  ul.checklist input { width: 24px; height: 24px; accent-color: var(--go); }
+  .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .stat { background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+  .stat b { display: block; font-family: var(--mono); font-size: 30px; }
+  .stat span { color: var(--muted); font-size: 14px; letter-spacing: .15em; }
+  table { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: 16px; }
+  th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  th { color: var(--muted); font-family: var(--sans); letter-spacing: .12em; font-weight: 600; }
+  .ok { color: var(--go); } .bad { color: var(--nogo); }
+  textarea { width: 100%; min-height: 90px; background: var(--bg); color: var(--bone); border: 1px solid var(--line);
+             border-radius: 10px; padding: 10px; font-family: var(--mono); font-size: 14px; }
+  #log { list-style: none; margin: 0; padding: 0; font-family: var(--mono); font-size: 15px; display: flex;
+         flex-direction: column; gap: 4px; max-height: 260px; overflow: auto; }
+  #log li span { color: var(--muted); margin-right: 10px; }
+  .hint { color: var(--muted); font-size: 15px; margin: 0; }
+  footer { color: var(--muted); font-size: 14px; letter-spacing: .1em; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <div class="badge" aria-hidden="true">MB</div>
+    <div><h1>MISSION CONTROL</h1><small>MISSION BUILDS HQ</small></div>
+  </div>
+  <label for="missionName" class="hint" style="display:flex;align-items:center;gap:8px;max-width:100%">Mission
+    <input id="missionName" value="MISSION 01 · MARS ROVER" maxlength="40">
+  </label>
+  <div id="localTime" aria-label="Local time">--:--:--</div>
+</header>
+
+<main>
+  <section class="clock-panel" id="clockPanel">
+    <h2>MISSION CLOCK</h2>
+    <div id="clock">T-00:10</div>
+    <div id="clockState">STANDING BY</div>
+    <div class="controls">
+      <label class="hint" for="countLength" style="display:flex;align-items:center;gap:8px">Countdown
+        <select id="countLength">
+          <option value="5">5 s</option>
+          <option value="10" selected>10 s</option>
+          <option value="30">30 s</option>
+          <option value="60">60 s</option>
+        </select>
+      </label>
+      <button class="primary" id="startBtn" type="button">START COUNTDOWN</button>
+      <button id="resetBtn" type="button">RESET</button>
+      <button id="fullBtn" type="button">FULL SCREEN</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>PRE-FLIGHT CHECKLIST</h2>
+    <div id="goBanner" class="nogo" role="status" aria-live="polite">NO-GO</div>
+    <ul class="checklist" id="checklist"></ul>
+  </section>
+
+  <section>
+    <h2>ROVER STATUS</h2>
+    <div class="stats">
+      <div class="stat"><span>BATTERY</span><b id="battery">--</b></div>
+      <div class="stat"><span>SYSTEMS CHECK</span><b id="preflightResult">--</b></div>
+    </div>
+    <table>
+      <thead><tr><th scope="col">MOTOR</th><th scope="col">PORT</th><th scope="col">TEMP</th><th scope="col">STATUS</th></tr></thead>
+      <tbody id="motors"><tr><td colspan="4" class="hint">Paste a systems check below</td></tr></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>ROVER DATA</h2>
+    <label for="consoleInput" class="hint">Paste lines from the VEXcode console (PREFLIGHT or TLM)</label>
+    <textarea id="consoleInput" spellcheck="false" placeholder="PREFLIGHT battery=87&#10;PREFLIGHT motor=LF port=1 ok=1 temp=32&#10;PREFLIGHT result=GO"></textarea>
+    <div class="controls" style="justify-content:flex-start">
+      <button class="primary" id="readBtn" type="button">READ</button>
+      <button id="clearDataBtn" type="button">CLEAR</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>MISSION LOG</h2>
+    <ul id="log" aria-live="off"></ul>
+  </section>
+</main>
+
+<footer>SPACE start / hold · R reset · F full screen</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  var DEFAULT_CHECKLIST = [
+    "Rover battery charged",
+    "Controller linked to rover",
+    "Program downloaded",
+    "Mission area clear",
+    "Cameras rolling",
+    "Mic recording"
+  ];
+
+  // ---------- small helpers ----------
+  function $(id) { return document.getElementById(id); }
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  function store(key, value) { try { localStorage.setItem("mbhq-mc-" + key, JSON.stringify(value)); } catch (e) {} }
+  function load(key, fallback) {
+    try { var v = localStorage.getItem("mbhq-mc-" + key); return v === null ? fallback : JSON.parse(v); }
+    catch (e) { return fallback; }
+  }
+
+  // ---------- parsing console lines (PREFLIGHT and TLM, see docs/telemetry-format.md) ----------
+  function parseFields(text) {
+    var fields = {};
+    text.trim().split(/\s+/).forEach(function (part) {
+      var i = part.indexOf("=");
+      if (i > 0) fields[part.slice(0, i)] = part.slice(i + 1);
+    });
+    return fields;
+  }
+
+  function parseConsole(text) {
+    var result = { battery: null, motors: [], preflight: null, events: [] };
+    text.split(/\r?\n/).forEach(function (raw) {
+      var line = raw.trim();
+      if (line.indexOf("PREFLIGHT ") === 0) {
+        var f = parseFields(line.slice(10));
+        if (f.battery !== undefined) result.battery = Number(f.battery);
+        if (f.motor !== undefined) {
+          result.motors.push({
+            id: f.motor, port: f.port || "?", ok: f.ok === "1",
+            temp: f.temp === undefined || f.temp === "na" ? null : Number(f.temp)
+          });
+        }
+        if (f.result !== undefined) result.preflight = f.result;
+      } else if (line.indexOf("TLM ") === 0) {
+        var t = parseFields(line.slice(4));
+        if (t.bat !== undefined) result.battery = Number(t.bat);
+        result.events.push({
+          t: t.t === undefined ? null : Number(t.t),
+          event: t.event || "data",
+          detail: (t.detail || "").replace(/_/g, " ")
+        });
+      }
+    });
+    return result;
+  }
+
+  // ---------- mission log ----------
+  function log(message) {
+    var li = document.createElement("li");
+    var d = new Date();
+    var stamp = document.createElement("span");
+    stamp.textContent = pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+    li.appendChild(stamp);
+    li.appendChild(document.createTextNode(message));
+    $("log").insertBefore(li, $("log").firstChild);
+  }
+
+  // ---------- checklist and GO / NO-GO ----------
+  var checked = load("checked", {});
+  var roverResult = null;
+
+  function renderChecklist() {
+    var list = $("checklist");
+    list.textContent = "";
+    DEFAULT_CHECKLIST.forEach(function (item, i) {
+      var li = document.createElement("li");
+      var label = document.createElement("label");
+      var box = document.createElement("input");
+      box.type = "checkbox";
+      box.checked = !!checked[item];
+      box.id = "check-" + i;
+      box.addEventListener("change", function () {
+        checked[item] = box.checked;
+        store("checked", checked);
+        if (box.checked) log("Checked: " + item);
+        updateGo();
+      });
+      label.appendChild(box);
+      label.appendChild(document.createTextNode(item));
+      li.appendChild(label);
+      list.appendChild(li);
+    });
+    updateGo();
+  }
+
+  function isGo() {
+    var allChecked = DEFAULT_CHECKLIST.every(function (item) { return checked[item]; });
+    return allChecked && roverResult !== "NO-GO";
+  }
+
+  function updateGo() {
+    var banner = $("goBanner");
+    var go = isGo();
+    banner.textContent = go ? "GO FOR LAUNCH" : (roverResult === "NO-GO" ? "NO-GO: ROVER CHECK" : "NO-GO");
+    banner.className = go ? "go" : "nogo";
+  }
+
+  // ---------- rover status ----------
+  function showRover(data) {
+    if (data.battery !== null) $("battery").textContent = data.battery + "%";
+    if (data.preflight) {
+      roverResult = data.preflight;
+      var res = $("preflightResult");
+      res.textContent = data.preflight;
+      res.className = data.preflight === "GO" ? "ok" : "bad";
+      log("Systems check: " + data.preflight);
+    }
+    if (data.motors.length) {
+      var body = $("motors");
+      body.textContent = "";
+      data.motors.forEach(function (m) {
+        var tr = document.createElement("tr");
+        [m.id, m.port, m.temp === null ? "--" : m.temp + " C", m.ok ? "OK" : "CHECK"].forEach(function (v, i) {
+          var td = document.createElement("td");
+          td.textContent = v;
+          if (i === 3) td.className = m.ok ? "ok" : "bad";
+          tr.appendChild(td);
+        });
+        body.appendChild(tr);
+      });
+    }
+    data.events.forEach(function (e) {
+      var when = e.t === null ? "" : "T+" + e.t.toFixed(1) + " s ";
+      log(when + e.event.toUpperCase() + (e.detail ? ": " + e.detail : ""));
+    });
+    updateGo();
+  }
+
+  // ---------- mission clock ----------
+  var clock = { length: 10, running: false, launchAt: null, remainingMs: 10000, launched: false };
+
+  function fmt(totalSeconds) {
+    var s = Math.max(0, Math.floor(totalSeconds));
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+    return (h ? pad(h) + ":" : "") + pad(m) + ":" + pad(sec);
+  }
+
+  function drawClock() {
+    var panel = $("clockPanel");
+    var now = Date.now();
+    var text, state;
+    if (clock.launched) {
+      text = "T+" + fmt((now - clock.launchAt) / 1000);
+      state = "MISSION IN PROGRESS";
+    } else if (clock.running) {
+      var left = clock.launchAt - now;
+      if (left <= 0) {
+        clock.launched = true;
+        clock.running = false;
+        log("LIFTOFF");
+        return drawClock();
+      }
+      text = "T-" + fmt(Math.ceil(left / 1000));
+      state = "COUNTING DOWN";
+    } else {
+      text = "T-" + fmt(Math.ceil(clock.remainingMs / 1000));
+      state = clock.remainingMs < clock.length * 1000 ? "HOLDING" : "STANDING BY";
+    }
+    $("clock").textContent = text;
+    $("clockState").textContent = state;
+    panel.classList.toggle("launched", clock.launched);
+    panel.classList.toggle("holding", state === "HOLDING");
+    $("startBtn").textContent = clock.launched ? "MISSION LIVE" : (clock.running ? "HOLD" : (state === "HOLDING" ? "RESUME" : "START COUNTDOWN"));
+  }
+
+  function startOrHold() {
+    if (clock.launched) return;
+    if (clock.running) {
+      clock.remainingMs = Math.max(0, clock.launchAt - Date.now());
+      clock.running = false;
+      log("Countdown on hold");
+    } else {
+      if (!isGo()) log("Warning: launching with NO-GO checklist");
+      clock.launchAt = Date.now() + clock.remainingMs;
+      clock.running = true;
+      log("Countdown " + (clock.remainingMs < clock.length * 1000 ? "resumed" : "started"));
+    }
+    drawClock();
+  }
+
+  function reset() {
+    clock.length = Number($("countLength").value);
+    clock.running = false;
+    clock.launched = false;
+    clock.launchAt = null;
+    clock.remainingMs = clock.length * 1000;
+    drawClock();
+  }
+
+  function toggleFullScreen() {
+    if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(function () {});
+    } else if (document.exitFullscreen) {
+      document.exitFullscreen().catch(function () {});
+    }
+  }
+
+  // ---------- wiring ----------
+  $("startBtn").addEventListener("click", startOrHold);
+  $("resetBtn").addEventListener("click", function () { reset(); log("Clock reset"); });
+  $("fullBtn").addEventListener("click", toggleFullScreen);
+  $("countLength").addEventListener("change", reset);
+  $("readBtn").addEventListener("click", function () { showRover(parseConsole($("consoleInput").value)); });
+  $("clearDataBtn").addEventListener("click", function () { $("consoleInput").value = ""; });
+  $("missionName").value = load("mission", $("missionName").value);
+  $("missionName").addEventListener("input", function () { store("mission", $("missionName").value); });
+
+  document.addEventListener("keydown", function (e) {
+    var tag = (e.target && e.target.tagName) || "";
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (e.code === "Space") { e.preventDefault(); startOrHold(); }
+    else if (e.key === "r" || e.key === "R") { reset(); log("Clock reset"); }
+    else if (e.key === "f" || e.key === "F") { toggleFullScreen(); }
+  });
+
+  setInterval(function () {
+    var d = new Date();
+    $("localTime").textContent = pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
+    drawClock();
+  }, 200);
+
+  renderChecklist();
+  reset();
+  log("Mission control online");
+
+  // For tests and for the live-telemetry upgrade later.
+  window.MissionControl = { parseConsole: parseConsole, showRover: showRover, isGo: isGo };
+})();
+</script>
+</body>
+</html>
